@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useQuery, useMutation, useLazyQuery } from "@apollo/client";
-import { GET_MOVIES, CREATE_MOVIE, CHECK_ACTOR_EXISTENCE, CHECK_DIRECTOR_EXISTENCE, CHECK_GENRE_EXISTENCE, DELETE_MOVIE, UPDATE_MOVIE, CHECK_MOVIE_BY_TITLE } from "./queries";
+import { GET_MOVIES, CREATE_MOVIE, CHECK_ACTOR_EXISTENCE, CHECK_MOVIE_BY_TITLE, DELETE_MOVIE, UPDATE_MOVIE } from "./queries";
 
 function App() {
   const { loading, error, data } = useQuery(GET_MOVIES);
@@ -8,8 +8,6 @@ function App() {
     refetchQueries: [{ query: GET_MOVIES }],
   });
   const [checkActorExistence] = useLazyQuery(CHECK_ACTOR_EXISTENCE);
-  const [checkGenreExistence] = useLazyQuery(CHECK_GENRE_EXISTENCE);
-  const [checkDirectorExistence] = useLazyQuery(CHECK_DIRECTOR_EXISTENCE);
   const [checkMovieByTitle] = useLazyQuery(CHECK_MOVIE_BY_TITLE);
   const [searchMovieByTitle] = useLazyQuery(CHECK_MOVIE_BY_TITLE, {
     onCompleted: (data) => {
@@ -39,9 +37,7 @@ function App() {
     rating: 0,
     votes: 0,
     revenue: 0,
-    actors: "", // Direct input as a single string
-    genres: "", // Direct input as a single string
-    director: "", // Direct input as a single string
+    actors: "", // Multiple actors as a comma-separated string
   });
 
   const [searchTitle, setSearchTitle] = useState("");
@@ -71,28 +67,30 @@ function App() {
       setErrorMessage("A movie with this title already exists.");
       return;
     } else {
-      setErrorMessage(""); // Clear the error message if no conflict exists
+      setErrorMessage("");
     }
 
-    // Check existence and prepare actors without any splitting
-    const actors = await checkActorExistence({ variables: { name: newMovie.actors } }).then(({ data }) =>
-      data?.actors.length ? { connect: { where: { node: { name: newMovie.actors } } } } : { create: { node: { name: newMovie.actors } } }
-    );
-    console.log(actors);
+    const actorsArray = newMovie.actors.split(",").map((actor) => actor.trim());
 
-    // Check existence and prepare genres without any splitting
-    const genres = await checkGenreExistence({ variables: { genre: newMovie.genres } }).then(({ data }) =>
-      data?.genres.length ? { connect: { where: { node: { genre: newMovie.genres } } } } : { create: { node: { genre: newMovie.genres } } }
-    );
-    console.log(genres);
-    // Check existence and prepare director without any splitting
-    const directors = await checkDirectorExistence({ variables: { name: newMovie.director } }).then(({ data }) =>
-      data?.directors.length ? { connect: { where: { node: { name: newMovie.director } } } } : { create: { node: { name: newMovie.director } } }
-    );
-    console.log(directors);
+    const createActors = [];
+    const connectActors = [];
+    const disconnectActors = [{ disconnect: {} }];
+
+    for (const actorName of actorsArray) {
+      const { data } = await checkActorExistence({ variables: { name: actorName } });
+      if (data?.actors.length) {
+        connectActors.push({ where: { node: { name: actorName } } });
+      } else {
+        createActors.push({ node: { name: actorName } });
+      }
+    }
 
     if (isEditing) {
-      // Update movie structure
+      const actors = {
+        disconnect: disconnectActors,
+        connect: connectActors,
+        create: createActors,
+      };
       const updateMovieInput = {
         title: newMovie.title,
         description: newMovie.description,
@@ -101,14 +99,15 @@ function App() {
         rating: parseFloat(newMovie.rating),
         votes: parseInt(newMovie.votes),
         revenue: parseFloat(newMovie.revenue),
-        actorsIn: [{ disconnect: {} }, actors], // No array wrapping, already prepared for update
-        genres: [{ disconnect: {} }, genres], // No array wrapping, already prepared for update
-        directedBy: [{ disconnect: {} }, directors], // No array wrapping, already prepared for update
+        actorsIn: actors,
       };
-
+      console.log(updateMovieInput);
       await updateMovie({ variables: { ...updateMovieInput } });
     } else {
-      // Create movie structure
+      const actors = {
+        connect: connectActors,
+        create: createActors,
+      };
       const createMovieInput = {
         title: newMovie.title,
         description: newMovie.description,
@@ -117,17 +116,15 @@ function App() {
         rating: parseFloat(newMovie.rating),
         votes: parseInt(newMovie.votes),
         revenue: parseFloat(newMovie.revenue),
-        actorsIn: [actors], // Wrapped in array for creation format
-        genres: [genres], // Wrapped in array for creation format
-        directedBy: [directors], // No array wrapping, matches creation format
+        actorsIn: actors,
       };
-
+      console.log(createMovieInput);
       await createMovie({ variables: { input: [createMovieInput] } });
     }
 
-    // Reset form after submission
     cleanForm();
     setIsEditing(false);
+    window.location.reload();
   };
 
   const cleanForm = () => {
@@ -140,13 +137,10 @@ function App() {
       votes: "",
       revenue: "",
       actors: "",
-      genres: "",
-      director: "",
     });
   };
 
   const handleUpdate = (movie) => {
-    console.log(movie);
     setNewMovie({
       title: movie.title,
       description: movie.description,
@@ -156,8 +150,6 @@ function App() {
       votes: movie.votes,
       revenue: movie.revenue,
       actors: movie.actorsIn?.map((actor) => actor.name).join(", "),
-      genres: movie.genres?.map((genre) => genre.genre).join(", "),
-      director: movie.directedBy?.map((director) => director.name).join(", "),
     });
     setIsEditing(true);
   };
@@ -195,7 +187,7 @@ function App() {
               <strong>Title:</strong> {searchedMovie.title}
               <ul>
                 <li>
-                  <strong>Description:</strong> {searchedMovie.description},<strong>Year:</strong> {searchedMovie.year}, <strong>Runtime:</strong> {searchedMovie.runtime},<strong>Rating:</strong>{" "}
+                  <strong>Description:</strong> {searchedMovie.description}, <strong>Year:</strong> {searchedMovie.year}, <strong>Runtime:</strong> {searchedMovie.runtime}, <strong>Rating:</strong>{" "}
                   {searchedMovie.rating}, <strong>Votes:</strong> {searchedMovie.votes}, <strong>Revenue:</strong> {searchedMovie.revenue}
                 </li>
                 <li>
@@ -203,36 +195,12 @@ function App() {
                   {searchedMovie.actorsIn?.length > 0 ? (
                     <span>
                       {searchedMovie.actorsIn.map((actor) => (
-                        <span key={actor.name}>{actor.name}</span>
+                        <span key={actor.name}>{actor.name}, </span>
                       ))}
                     </span>
                   ) : (
                     "N/A"
-                  )}
-                </li>
-                <li>
-                  <strong>Genres:</strong>{" "}
-                  {searchedMovie.genres?.length > 0 ? (
-                    <span>
-                      {searchedMovie.genres.map((genre) => (
-                        <span key={genre.genre}>{genre.genre}</span>
-                      ))}
-                    </span>
-                  ) : (
-                    "N/A"
-                  )}
-                </li>
-                <li>
-                  <strong>Director:</strong>{" "}
-                  {searchedMovie.directedBy?.length > 0 ? (
-                    <span>
-                      {searchedMovie.directedBy.map((director) => (
-                        <span key={director.name}>{director.name}</span>
-                      ))}
-                    </span>
-                  ) : (
-                    "N/A"
-                  )}
+                  )}{" "}
                 </li>
               </ul>
             </li>
@@ -240,7 +208,7 @@ function App() {
         )}
       </div>
 
-      <hr></hr>
+      <hr />
       <h2>Add/Update Form</h2>
       <form onSubmit={handleSubmit}>
         <label>
@@ -248,59 +216,39 @@ function App() {
         </label>
         <br />
         <label>
-          {" "}
           Description:
           <input type="text" name="description" placeholder="Description" value={newMovie.description} onChange={handleInputChange} />
         </label>
         <br />
         <label>
-          {" "}
           Year:
           <input type="number" name="year" placeholder="Year" value={newMovie.year} onChange={handleInputChange} />
         </label>
         <br />
         <label>
-          {" "}
           Runtime:
           <input type="number" name="runtime" placeholder="Runtime" value={newMovie.runtime} onChange={handleInputChange} />
         </label>
         <br />
         <label>
-          {" "}
           Rating:
           <input type="number" name="rating" placeholder="Rating" value={newMovie.rating} onChange={handleInputChange} />
         </label>
         <br />
         <label>
-          {" "}
           Votes:
           <input type="number" name="votes" placeholder="Votes" value={newMovie.votes} onChange={handleInputChange} />
         </label>
         <br />
         <label>
-          {" "}
           Revenue:
           <input type="number" name="revenue" placeholder="Revenue" value={newMovie.revenue} onChange={handleInputChange} />
         </label>
         <br />
 
         <label>
-          {" "}
-          Actors
+          Actors (comma-separated):
           <input type="text" name="actors" placeholder="Actors" value={newMovie.actors} onChange={handleInputChange} />
-        </label>
-        <br />
-        <label>
-          {" "}
-          Genres
-          <input type="text" name="genres" placeholder="Genres" value={newMovie.genres} onChange={handleInputChange} />
-        </label>
-        <br />
-
-        <label>
-          {" "}
-          Director
-          <input type="text" name="director" placeholder="Director" value={newMovie.director} onChange={handleInputChange} />
         </label>
         <br />
 
@@ -319,35 +267,21 @@ function App() {
       </form>
 
       <h2>Movie List</h2>
-
       <table border="1" cellPadding="10" cellSpacing="0">
         <thead>
           <tr>
-            <th>Title</th>
-            <th>Director</th>
-            <th>Genres</th>
-            <th>Actors</th>
+            <th>Movie</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {data.movies?.map((movie) => (
             <tr key={movie.title}>
-              <td>{movie.title}</td>
-              <td>{movie.directedBy ? movie.directedBy.name : "N/A"}</td>
               <td>
-                <ul>
-                  {movie.genres?.map((genre) => (
-                    <li key={genre.genre}>{genre.genre}</li>
-                  ))}
-                </ul>
-              </td>
-              <td>
-                <ul>
-                  {movie.actorsIn?.map((actor) => (
-                    <li key={actor.name}>{actor.name}</li>
-                  ))}
-                </ul>
+                <strong>Title: {movie.title}</strong>
+                <br />
+                <strong>Actors : </strong>
+                {movie.actorsIn?.map((actor) => actor.name).join(", ")}
               </td>
               <td>
                 <button onClick={() => handleUpdate(movie)}>Update</button>

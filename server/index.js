@@ -13,6 +13,7 @@ MOVIE{title:String}     <-[:ACTED_IN]-       Actor{name:String}
 const typeDefs = `#graphql
  
  type Movie {
+        ids:String
         title: String
         description: String
         year: Int
@@ -21,25 +22,30 @@ const typeDefs = `#graphql
         votes: Int
         revenue: Float
         actorsIn: [Actor!]! @relationship(type: "ACTED_IN", direction: IN)
-        directedBy: [Director!]! @relationship(type: "DIRECTED", direction: IN)
-        genres: [Genre!]! @relationship(type: "IN", direction: OUT)
+        # directedBy: [Director!]! @relationship(type: "DIRECTED", direction: IN)
+        # genres: [Genre!]! @relationship(type: "IN", direction: OUT)
     }
-
-    type Actor {
+      type Actor {
         name: String
         moviesIn: [Movie!]! @relationship(type: "ACTED_IN", direction: OUT)
-        directedMovies: [Movie!]! @relationship(type: "DIRECTED", direction: OUT)
+        # directedMovies: [Movie!]! @relationship(type: "DIRECTED", direction: OUT)
     }
 
-    type Director {
-        name: String
-        moviesDirected: [Movie!]! @relationship(type: "DIRECTED", direction: OUT)
-    }
+    # type Actor {
+    #     name: String
+    #     moviesIn: [Movie!]! @relationship(type: "ACTED_IN", direction: OUT)
+    #     directedMovies: [Movie!]! @relationship(type: "DIRECTED", direction: OUT)
+    # }
 
-    type Genre {
-        genre: String
-        moviesInGenre: [Movie!]! @relationship(type: "IN", direction: IN)
-    }
+    # type Director {
+    #     name: String
+    #     moviesDirected: [Movie!]! @relationship(type: "DIRECTED", direction: OUT)
+    # }
+
+    # type Genre {
+    #     genre: String
+    #     moviesInGenre: [Movie!]! @relationship(type: "IN", direction: IN)
+    # }
 `;
 
 const driver = neo4j.driver("neo4j+s://46b87d8b.databases.neo4j.io", neo4j.auth.basic("neo4j", "zEfS02UU9Ps_K3kom6EVREUph1EC8K5HdUve40SvC4Q"));
